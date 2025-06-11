@@ -6,10 +6,84 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  output   = "../dist/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// Material Master
+model Material {
+  id            String @id @default(cuid())
+  name          String
+  unit          String // Bags, Tonnes, Numbers, Cubic Meters
+  category      String // Cement, Steel, Aggregates, etc.
+  minStockLevel Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  grns          GRN[]
+  issues        IssueNote[]
+
+  @@map("materials")
+}
+
+// GRN (Goods Receipt Note)
+model GRN {
+  id           String   @id @default(cuid())
+  grnNumber    String   @unique
+  date         DateTime
+  materialId   String
+  quantity     Float
+  rate         Float
+  totalAmount  Float
+  supplierName String
+  invoiceRef   String?
+  receivedBy   String
+  remarks      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  material     Material @relation(fields: [materialId], references: [id])
+  issueItems   IssueItem[]
+
+  @@map("grns")
+}
+
+// Issue Note
+model IssueNote {
+  id            String   @id @default(cuid())
+  issueNumber   String   @unique
+  date          DateTime
+  materialId    String
+  totalQuantity Float
+  weightedRate  Float
+  totalAmount   Float
+  issuedTo      String
+  purpose       String?
+  approvedBy    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  material      Material @relation(fields: [materialId], references: [id])
+  issueItems    IssueItem[]
+
+  @@map("issue_notes")
+}
+
+// Issue Item (FIFO breakdown)
+model IssueItem {
+  id          String @id @default(cuid())
+  issueNoteId String
+  grnId       String
+  quantity    Float
+  rate        Float
+  amount      Float
+
+  issueNote   IssueNote @relation(fields: [issueNoteId], references: [id], onDelete: Cascade)
+  grn         GRN @relation(fields: [grnId], references: [id])
+
+  @@map("issue_items")
 }
