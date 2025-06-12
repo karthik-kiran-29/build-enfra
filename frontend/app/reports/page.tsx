@@ -1,4 +1,5 @@
+import Reports from "@/components/Reports";
 
 export default function ReportsPage() {
-  return <h1>coming soon</h1>
+  return <Reports/>
 }
