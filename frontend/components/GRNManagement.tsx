@@ -33,6 +33,7 @@ export default function GRNManagement() {
     const [activeTab, setActiveTab] = useState('create')
     const [grns, setGrns] = useState<GRN[]>([])
     const [loading, setLoading] = useState(false)
+    const [materials,setMaterials] = useState<Material[]>([]);
     const [form, setForm] = useState({
         materialId: '',
         quantity: '',
@@ -55,26 +56,13 @@ export default function GRNManagement() {
     }, [activeTab])
 
     // Dummy materials for dropdown (replace with API if needed)
-    const materials: Material[] = [
-        {
-            id: 'cmbt0qo5b0000z7o06mnmvvat',
-            name: 'Marble',
-            unit: 'Bags',
-            category: 'Cement',
-            minStockLevel: 90,
-            createdAt: '',
-            updatedAt: ''
-        },
-        {
-            id: 'mat2',
-            name: 'Cement',
-            unit: 'Bags',
-            category: 'Cement',
-            minStockLevel: 50,
-            createdAt: '',
-            updatedAt: ''
-        }
-    ]
+    // Fetch all materials (for dropdown)
+  useEffect(() => {
+    fetch('http://localhost:3001/api/materials')
+      .then(res => res.json())
+      .then(setMaterials)
+      .catch(() => setMaterials([]))
+  }, [])
 
     // Handle form field change
     const handleFormChange = (field: string, value: string) => {
