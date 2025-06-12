@@ -1,84 +1,164 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Search, Calculator, Eye, Printer } from 'lucide-react'
 
-const mockFifoData = {
-  materialName: 'Portland Cement',
-  unit: 'Bags',
-  currentStock: 350,
-  grnHistory: [
-    { grnNumber: 'GRN/001', date: '2025-01-05', quantity: 100, remainingQty: 100, rate: 400, totalValue: 40000 },
-    { grnNumber: 'GRN/002', date: '2025-01-10', quantity: 150, remainingQty: 150, rate: 450, totalValue: 67500 },
-    { grnNumber: 'GRN/003', date: '2025-01-15', quantity: 100, remainingQty: 100, rate: 500, totalValue: 50000 }
-  ]
+type Material = {
+  id: string
+  name: string
+  unit: string
+  category: string
+  minStockLevel: number
+  createdAt: string
+  updatedAt: string
+}
+
+type Issue = {
+  id: string
+  issueNumber: string
+  date: string
+  materialId: string
+  totalQuantity: number
+  weightedRate: number
+  totalAmount: number
+  issuedTo: string
+  purpose: string | null
+  approvedBy: string
+  createdAt: string
+  updatedAt: string
+  material: Material
+}
+
+type PreviewResponse = {
+  items: {
+    grnNumber: string
+    date: string
+    quantity: number
+    rate: number
+    amount: number
+  }[]
+  totalQuantity: number
+  weightedAverageRate: number
+  totalAmount: number
+  canFulfill: boolean
+  availableStock: number
 }
 
 export default function IssueNotes() {
-  const [activeTab, setActiveTab] = useState('create')
+  const [activeTab, setActiveTab] = useState<'create' | 'listing' | 'preview'>('create')
+  const [issues, setIssues] = useState<Issue[]>([])
+  const [materials, setMaterials] = useState<Material[]>([])
+  const [loading, setLoading] = useState(false)
   const [issueData, setIssueData] = useState({
-    issueNumber: 'ISN/2025/001',
-    date: '',
-    material: '',
-    requestedQuantity: '',
+    materialId: '',
+    quantity: '',
+    rate: '',
+    supplierName: '',
+    invoiceRef: '',
+    receivedBy: '',
+    remarks: '',
     issuedTo: '',
-    purpose: '',
-    approvedBy: ''
+    approvedBy: '',
+    purpose: ''
   })
-  
-  type FifoBreakdown = {
-    breakdown: {
-      grnNumber: string
-      date: string
-      quantity: number
-      rate: number
-      amount: number
-    }[]
-    totalQuantity: number
-    totalAmount: number
-    weightedAvgRate: string
-    insufficientStock: boolean
-  }
-  
-  const [fifoBreakdown, setFifoBreakdown] = useState<FifoBreakdown | null>(null)
-  const [showFifoPreview, setShowFifoPreview] = useState(false)
+  const [previewData, setPreviewData] = useState<PreviewResponse | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [createLoading, setCreateLoading] = useState(false)
+  const [successMsg, setSuccessMsg] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
 
-  const calculateFifo = () => {
-    const requestedQty = parseInt(issueData.requestedQuantity)
-    if (!requestedQty || requestedQty <= 0) return
+  // Fetch all issues
+  useEffect(() => {
+    setLoading(true)
+    fetch('http://localhost:3001/api/issues')
+      .then(res => res.json())
+      .then(setIssues)
+      .finally(() => setLoading(false))
+  }, [])
 
-    let remainingToIssue = requestedQty
-    const breakdown = []
-    let totalAmount = 0
+  // Fetch all materials (for dropdown)
+  useEffect(() => {
+    fetch('http://localhost:3001/api/materials')
+      .then(res => res.json())
+      .then(setMaterials)
+      .catch(() => setMaterials([]))
+  }, [])
 
-    for (const grn of mockFifoData.grnHistory) {
-      if (remainingToIssue <= 0) break
-      
-      const qtyFromThisGrn = Math.min(remainingToIssue, grn.remainingQty)
-      const amountFromThisGrn = qtyFromThisGrn * grn.rate
-      
-      breakdown.push({
-        grnNumber: grn.grnNumber,
-        date: grn.date,
-        quantity: qtyFromThisGrn,
-        rate: grn.rate,
-        amount: amountFromThisGrn
+  // Handle preview
+  const handlePreview = async () => {
+    if (!issueData.materialId || !issueData.quantity) return
+    setPreviewLoading(true)
+    setPreviewData(null)
+    setErrorMsg('')
+    try {
+      const res = await fetch('http://localhost:3001/api/issues/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          materialId: issueData.materialId,
+          quantity: issueData.quantity
+        })
       })
-      
-      totalAmount += amountFromThisGrn
-      remainingToIssue -= qtyFromThisGrn
+      const data = await res.json()
+      setPreviewData(data)
+      setActiveTab('preview')
+    } catch {
+      setErrorMsg('Failed to fetch preview')
+    } finally {
+      setPreviewLoading(false)
     }
-
-    const weightedAvgRate = totalAmount / requestedQty
-    
-    setFifoBreakdown({
-      breakdown,
-      totalQuantity: requestedQty,
-      totalAmount,
-      weightedAvgRate: weightedAvgRate.toFixed(2),
-      insufficientStock: remainingToIssue > 0
-    })
-    setShowFifoPreview(true)
   }
+
+  // Handle create
+  const handleCreate = async () => {
+    setCreateLoading(true)
+    setErrorMsg('')
+    setSuccessMsg('')
+    try {
+      const res = await fetch('http://localhost:3001/api/issues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          materialId: issueData.materialId,
+          quantity: issueData.quantity,
+          rate: issueData.rate,
+          supplierName: issueData.supplierName,
+          invoiceRef: issueData.invoiceRef,
+          receivedBy: issueData.receivedBy,
+          remarks: issueData.remarks,
+          issuedTo: issueData.issuedTo,
+          approvedBy: issueData.approvedBy,
+          purpose: issueData.purpose
+        })
+      })
+      if (!res.ok) throw new Error('Failed to create issue')
+      setSuccessMsg('Issue created successfully')
+      setIssueData({
+        materialId: '',
+        quantity: '',
+        rate: '',
+        supplierName: '',
+        invoiceRef: '',
+        receivedBy: '',
+        remarks: '',
+        issuedTo: '',
+        approvedBy: '',
+        purpose: ''
+      })
+      setPreviewData(null)
+      setActiveTab('listing')
+      // Refresh issues
+      fetch('http://localhost:3001/api/issues')
+        .then(res => res.json())
+        .then(setIssues)
+    } catch {
+      setErrorMsg('Failed to create issue')
+    } finally {
+      setCreateLoading(false)
+    }
+  }
+
+  // Get selected material
+  const selectedMaterial = materials.find(m => m.id === issueData.materialId)
 
   return (
     <div className="p-6 min-h-screen bg-gray-50">
@@ -91,17 +171,17 @@ export default function IssueNotes() {
       <div className="mb-6">
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
-            {['create', 'listing'].map((tab) => (
+            {['create', 'preview', 'listing'].map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => setActiveTab(tab as any)}
                 className={`py-2 px-1 border-b-2 font-medium text-sm capitalize ${
                   activeTab === tab
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {tab} Issue Note
+                {tab === 'listing' ? 'List Issue Notes' : tab.charAt(0).toUpperCase() + tab.slice(1) + ' Issue Note'}
               </button>
             ))}
           </nav>
@@ -118,44 +198,19 @@ export default function IssueNotes() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Issue Number
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                    value={issueData.issueNumber}
-                    readOnly
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Date
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={issueData.date}
-                    onChange={(e) => setIssueData({...issueData, date: e.target.value})}
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Material
                   </label>
                   <select
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={issueData.material}
-                    onChange={(e) => setIssueData({...issueData, material: e.target.value})}
+                    value={issueData.materialId}
+                    onChange={(e) => setIssueData({ ...issueData, materialId: e.target.value })}
                   >
                     <option value="">Select Material</option>
-                    <option value="cement">Portland Cement</option>
-                    <option value="steel">TMT Steel Bars</option>
-                    <option value="bricks">Red Bricks</option>
+                    {materials.map((mat) => (
+                      <option key={mat.id} value={mat.id}>{mat.name}</option>
+                    ))}
                   </select>
                 </div>
-                
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Quantity to Issue
@@ -164,20 +219,80 @@ export default function IssueNotes() {
                     <input
                       type="number"
                       className="w-full px-3 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={issueData.requestedQuantity}
-                      onChange={(e) => setIssueData({...issueData, requestedQuantity: e.target.value})}
+                      value={issueData.quantity}
+                      onChange={(e) => setIssueData({ ...issueData, quantity: e.target.value })}
                       placeholder="Enter quantity"
                     />
                     <button
-                      onClick={calculateFifo}
+                      onClick={handlePreview}
                       className="px-3 bg-blue-600 text-white rounded-r-md hover:bg-blue-700 border border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={!issueData.material || !issueData.requestedQuantity}
+                      disabled={!issueData.materialId || !issueData.quantity || previewLoading}
+                      type="button"
                     >
                       <Calculator className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
-                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Rate
+                  </label>
+                  <input
+                    type="number"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={issueData.rate}
+                    onChange={(e) => setIssueData({ ...issueData, rate: e.target.value })}
+                    placeholder="Enter rate"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Supplier Name
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={issueData.supplierName}
+                    onChange={(e) => setIssueData({ ...issueData, supplierName: e.target.value })}
+                    placeholder="Enter supplier name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Invoice Ref
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={issueData.invoiceRef}
+                    onChange={(e) => setIssueData({ ...issueData, invoiceRef: e.target.value })}
+                    placeholder="Enter invoice reference"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Received By
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={issueData.receivedBy}
+                    onChange={(e) => setIssueData({ ...issueData, receivedBy: e.target.value })}
+                    placeholder="Enter receiver name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Remarks
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={issueData.remarks}
+                    onChange={(e) => setIssueData({ ...issueData, remarks: e.target.value })}
+                    placeholder="Enter remarks"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Issued To (Project/Department)
@@ -186,11 +301,10 @@ export default function IssueNotes() {
                     type="text"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={issueData.issuedTo}
-                    onChange={(e) => setIssueData({...issueData, issuedTo: e.target.value})}
+                    onChange={(e) => setIssueData({ ...issueData, issuedTo: e.target.value })}
                     placeholder="Enter project or department"
                   />
                 </div>
-                
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Approved By
@@ -199,12 +313,11 @@ export default function IssueNotes() {
                     type="text"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     value={issueData.approvedBy}
-                    onChange={(e) => setIssueData({...issueData, approvedBy: e.target.value})}
+                    onChange={(e) => setIssueData({ ...issueData, approvedBy: e.target.value })}
                     placeholder="Enter approver name"
                   />
                 </div>
               </div>
-              
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Purpose
@@ -212,119 +325,142 @@ export default function IssueNotes() {
                 <textarea
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   value={issueData.purpose}
-                  onChange={(e) => setIssueData({...issueData, purpose: e.target.value})}
+                  onChange={(e) => setIssueData({ ...issueData, purpose: e.target.value })}
                   placeholder="Enter purpose of issue"
                   rows={3}
                 />
               </div>
+              {errorMsg && <div className="text-red-600 mt-2">{errorMsg}</div>}
+              {successMsg && <div className="text-green-600 mt-2">{successMsg}</div>}
             </div>
-
-            {/* FIFO Breakdown */}
-            {showFifoPreview && fifoBreakdown && (
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">FIFO Calculation Breakdown</h3>
-                
-                {fifoBreakdown.insufficientStock && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-                    <p className="text-red-800 font-medium">
-                      Insufficient Stock! Available: {mockFifoData.currentStock} {mockFifoData.unit}
-                    </p>
-                  </div>
-                )}
-                
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">GRN Number</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {fifoBreakdown.breakdown.map((item, index) => (
-                        <tr key={index}>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.grnNumber}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{item.date}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">₹{item.rate}</td>
-                          <td className="px-4 py-3 text-sm text-gray-900">₹{item.amount.toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-gray-50">
-                      <tr>
-                        <td colSpan={2} className="px-4 py-3 text-sm font-medium text-gray-900">Total</td>
-                        <td className="px-4 py-3 text-sm font-bold text-gray-900">{fifoBreakdown.totalQuantity}</td>
-                        <td className="px-4 py-3 text-sm font-bold text-gray-900">₹{fifoBreakdown.weightedAvgRate}</td>
-                        <td className="px-4 py-3 text-sm font-bold text-gray-900">₹{fifoBreakdown.totalAmount.toLocaleString()}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            )}
-
             <div className="flex justify-end space-x-3">
               <button className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
                 Save as Draft
               </button>
-              <button 
+              <button
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!showFifoPreview || !!(fifoBreakdown && fifoBreakdown.insufficientStock)}
+                disabled={
+                  !issueData.materialId ||
+                  !issueData.quantity ||
+                  !issueData.rate ||
+                  !issueData.issuedTo ||
+                  !issueData.approvedBy ||
+                  createLoading
+                }
+                onClick={handleCreate}
+                type="button"
               >
-                Create Issue Note
+                {createLoading ? 'Creating...' : 'Create Issue Note'}
               </button>
             </div>
           </div>
-
           {/* Right Column - Stock Info */}
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Current Stock</h3>
-              {issueData.material ? (
+              {selectedMaterial ? (
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Material:</span>
-                    <span className="text-sm font-medium text-gray-900">{mockFifoData.materialName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Available:</span>
-                    <span className="text-sm font-medium text-gray-900">{mockFifoData.currentStock} {mockFifoData.unit}</span>
+                    <span className="text-sm font-medium text-gray-900">{selectedMaterial.name}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Unit:</span>
-                    <span className="text-sm font-medium text-gray-900">{mockFifoData.unit}</span>
+                    <span className="text-sm font-medium text-gray-900">{selectedMaterial.unit}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Category:</span>
+                    <span className="text-sm font-medium text-gray-900">{selectedMaterial.category}</span>
                   </div>
                 </div>
               ) : (
                 <p className="text-sm text-gray-500">Select a material to view stock information</p>
               )}
             </div>
+          </div>
+        </div>
+      )}
 
+      {/* Preview Issue Note Tab */}
+      {activeTab === 'preview' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">GRN History (FIFO Order)</h3>
-              {issueData.material ? (
-                <div className="space-y-3">
-                  {mockFifoData.grnHistory.map((grn, index) => (
-                    <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{grn.grnNumber}</p>
-                          <p className="text-xs text-gray-500">{grn.date}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900">{grn.remainingQty} {mockFifoData.unit}</p>
-                          <p className="text-xs text-gray-500">₹{grn.rate}/{mockFifoData.unit}</p>
-                        </div>
-                      </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">FIFO Calculation Preview</h3>
+              {previewLoading && <div>Loading preview...</div>}
+              {previewData && (
+                <>
+                  {!previewData.canFulfill && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                      <p className="text-red-800 font-medium">
+                        Insufficient Stock! Available: {previewData.availableStock} {selectedMaterial?.unit}
+                      </p>
                     </div>
-                  ))}
+                  )}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">GRN Number</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rate</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {previewData.items.map((item, index) => (
+                          <tr key={index}>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.grnNumber}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500">{item.date}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">{item.quantity}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">₹{item.rate}</td>
+                            <td className="px-4 py-3 text-sm text-gray-900">₹{item.amount.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50">
+                        <tr>
+                          <td colSpan={2} className="px-4 py-3 text-sm font-medium text-gray-900">Total</td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900">{previewData.totalQuantity}</td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900">₹{previewData.weightedAverageRate.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900">₹{previewData.totalAmount.toLocaleString()}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                onClick={() => setActiveTab('create')}
+              >
+                Back to Create
+              </button>
+            </div>
+          </div>
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Current Stock</h3>
+              {selectedMaterial ? (
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Material:</span>
+                    <span className="text-sm font-medium text-gray-900">{selectedMaterial.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Unit:</span>
+                    <span className="text-sm font-medium text-gray-900">{selectedMaterial.unit}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Category:</span>
+                    <span className="text-sm font-medium text-gray-900">{selectedMaterial.category}</span>
+                  </div>
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">Select a material to view GRN history</p>
+                <p className="text-sm text-gray-500">Select a material to view stock information</p>
               )}
             </div>
           </div>
@@ -342,10 +478,10 @@ export default function IssueNotes() {
                   type="text"
                   placeholder="Search issue notes..."
                   className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  // Add search logic if needed
                 />
               </div>
             </div>
-            
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -360,22 +496,34 @@ export default function IssueNotes() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  <tr>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">ISN/2025/001</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">2025-01-18</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Portland Cement</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">120 Bags</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Project Alpha</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">₹49,000</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button className="text-blue-600 hover:text-blue-900 mr-3">
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button className="text-gray-600 hover:text-gray-900">
-                        <Printer className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-6">Loading...</td>
+                    </tr>
+                  ) : issues.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-6">No issues found.</td>
+                    </tr>
+                  ) : (
+                    issues.map((issue) => (
+                      <tr key={issue.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{issue.issueNumber}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{issue.date.slice(0, 10)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{issue.material?.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{issue.totalQuantity} {issue.material?.unit}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{issue.issuedTo}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">₹{issue.totalAmount.toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <button className="text-blue-600 hover:text-blue-900 mr-3">
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button className="text-gray-600 hover:text-gray-900">
+                            <Printer className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
