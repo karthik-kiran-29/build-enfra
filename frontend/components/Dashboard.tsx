@@ -3,34 +3,70 @@ import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer } from 'recharts'
 import { AlertTriangle, Package, DollarSign, TrendingDown } from 'lucide-react'
 
-const mockData = {
-  stockSummary: {
-    totalMaterials: 250,
-    totalStockValue: 500000,
-    lowStockItems: 15,
-  },
-  lowStockAlerts: [
-    { name: 'Cement', currentStock: '50 bags', reorderLevel: '100 bags' },
-    { name: 'Steel Rods', currentStock: '2000 kg', reorderLevel: '3000 kg' },
-    { name: 'Bricks', currentStock: '5000', reorderLevel: '10000' },
-  ],
-  recentTransactions: [
-    { date: '2024-01-15', material: 'Cement', quantity: '200 bags', type: 'grn' },
-    { date: '2024-01-16', material: 'Steel Rods', quantity: '5000 kg', type: 'grn' },
-    { date: '2024-01-17', material: 'Bricks', quantity: '10000', type: 'grn' },
-  ],
-  topConsumed: [
-    { name: 'Cement', value: 45 },
-    { name: 'Steel Rods', value: 35 },
-    { name: 'Bricks', value: 25 },
-    { name: 'Sand', value: 20 },
-    { name: 'Aggregates', value: 15 },
-  ]
+type DashboardApiResponse = {
+  totalMaterials: number
+  totalGRNs: number
+  totalIssues: number
+  lowStockCount: number
+  recentGRNs: any[]
+  recentIssues: any[]
+  lowStockMaterials: any[]
 }
 
 export default function Dashboard() {
-  const [data, setData] = useState(mockData)
-  const [activeTab, setActiveTab] = useState('grn')
+  const [data, setData] = useState<DashboardApiResponse | null>(null)
+  const [activeTab, setActiveTab] = useState<'grn' | 'issues'>('grn')
+
+  useEffect(() => {
+    fetch('http://localhost:3001/api/dashboard/summary')
+      .then(res => res.json())
+      .then(setData)
+      .catch(() => setData(null))
+  }, [])
+
+  // Fallback for loading state
+  if (!data) {
+    return <div className="p-6">Loading...</div>
+  }
+
+  // Prepare summary
+  const stockSummary = {
+    totalMaterials: data.totalMaterials,
+    totalStockValue: data.lowStockMaterials.reduce((sum, m) => sum + (m.stockValue || 0), 0),
+    lowStockItems: data.lowStockCount,
+  }
+
+  // Prepare low stock alerts
+  const lowStockAlerts = data.lowStockMaterials.map((m) => ({
+    name: m.name,
+    currentStock: `${m.availableStock} ${m.unit}`,
+    reorderLevel: `${m.minStockLevel} ${m.unit}`,
+  }))
+
+  // Prepare recent transactions
+  const recentTransactions =
+    activeTab === 'grn'
+      ? data.recentGRNs.map((g) => ({
+          date: new Date(g.date).toLocaleDateString(),
+          material: g.material?.name || '',
+          quantity: `${g.quantity} ${g.material?.unit || ''}`,
+          type: 'grn',
+        }))
+      : data.recentIssues.map((i) => ({
+          date: new Date(i.date).toLocaleDateString(),
+          material: i.material?.name || '',
+          quantity: `${i.totalQuantity} ${i.material?.unit || ''}`,
+          type: 'issues',
+        }))
+
+  // Prepare top consumed (dummy, as not in API)
+  const topConsumed = data.lowStockMaterials
+    .map((m) => ({
+      name: m.name,
+      value: m.totalIssued || 0,
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5)
 
   return (
     <div className="p-6">
@@ -48,7 +84,7 @@ export default function Dashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Materials</p>
-              <p className="text-2xl font-bold text-gray-900">{data.stockSummary.totalMaterials}</p>
+              <p className="text-2xl font-bold text-gray-900">{stockSummary.totalMaterials}</p>
             </div>
           </div>
         </div>
@@ -60,7 +96,7 @@ export default function Dashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Stock Value</p>
-              <p className="text-2xl font-bold text-gray-900">₹{data.stockSummary.totalStockValue.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-gray-900">₹{stockSummary.totalStockValue.toLocaleString()}</p>
             </div>
           </div>
         </div>
@@ -72,7 +108,7 @@ export default function Dashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Low Stock Items</p>
-              <p className="text-2xl font-bold text-gray-900">{data.stockSummary.lowStockItems}</p>
+              <p className="text-2xl font-bold text-gray-900">{stockSummary.lowStockItems}</p>
             </div>
           </div>
         </div>
@@ -85,9 +121,8 @@ export default function Dashboard() {
             <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
             <h2 className="text-lg font-semibold text-gray-900">Low Stock Alerts</h2>
           </div>
-          
           <div className="space-y-3">
-            {data.lowStockAlerts.map((alert, index) => (
+            {lowStockAlerts.map((alert, index) => (
               <div key={index} className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
                 <div>
                   <p className="font-medium text-gray-900">{alert.name}</p>
@@ -104,7 +139,6 @@ export default function Dashboard() {
         {/* Recent Transactions */}
         <div className="card">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Transactions</h2>
-          
           <div className="mb-4">
             <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
               <button
@@ -125,9 +159,8 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-
           <div className="space-y-3">
-            {data.recentTransactions.map((transaction, index) => (
+            {recentTransactions.map((transaction, index) => (
               <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                 <div>
                   <p className="font-medium text-gray-900">{transaction.material}</p>
@@ -145,14 +178,15 @@ export default function Dashboard() {
         <div className="card lg:col-span-2">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Top Consumed Materials</h2>
           <div className="text-sm text-gray-600 mb-4">
-            <span className="text-2xl font-bold text-gray-900">10000</span>
-            <span className="text-green-600 ml-2">+10%</span>
+            <span className="text-2xl font-bold text-gray-900">
+              {topConsumed.reduce((sum, t) => sum + t.value, 0)}
+            </span>
+            <span className="text-green-600 ml-2">+0%</span>
             <span className="ml-1">Last Month</span>
           </div>
-          
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.topConsumed}>
+              <BarChart data={topConsumed}>
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Bar dataKey="value" fill="#3b82f6" radius={4} />
