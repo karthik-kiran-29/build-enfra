@@ -3,71 +3,33 @@
 import React, { useEffect, useState } from "react";
 import { Printer } from "lucide-react";
 
-type Material = {
+type StockItem = {
     id: string;
     name: string;
     unit: string;
     category: string;
     minStockLevel: number;
+    totalReceived: number;
+    totalIssued: number;
+    availableStock: number;
+    stockValue: number;
+    isLowStock: boolean;
 };
 
-type GRN = {
-    id: string;
-    grnNumber: string;
+type MovementItem = {
+    type: "GRN" | "ISSUE";
     date: string;
-    materialId: string;
-    quantity: number;
-    rate: number;
-    totalAmount: number;
-    supplierName: string;
-};
-
-type IssueNote = {
-    id: string;
-    issueNumber: string;
-    date: string;
-    materialId: string;
-    totalQuantity: number;
-    weightedRate: number;
-    totalAmount: number;
-    issuedTo: string;
-    approvedBy: string;
-    issueItems: IssueItem[];
-};
-
-type IssueItem = {
-    id: string;
-    grnId: string;
+    reference: string;
     quantity: number;
     rate: number;
     amount: number;
-    grn: GRN;
+    balance: number;
 };
 
-type StockReport = {
-    material: Material;
-    currentStock: number;
-    minStockLevel: number;
-    unit: string;
-};
-
-type MovementReport = {
-    material: Material;
-    movements: {
-        date: string;
-        type: "GRN" | "Issue";
-        quantity: number;
-        rate: number;
-        refNumber: string;
-    }[];
-};
-
-type ValuationReport = {
-    material: Material;
-    stockValue: number;
-    currentStock: number;
-    weightedRate: number;
-};
+const tabLabels = [
+    "Current Stock",
+    "Stock Movements"
+];
 
 const fetcher = (url: string) =>
     fetch(url).then((res) => {
@@ -75,47 +37,35 @@ const fetcher = (url: string) =>
         return res.json();
     });
 
-const tabLabels = [
-    "Current Stock",
-    "Stock Movements",
-    "Stock Valuation"
-];
-
 const Reports: React.FC = () => {
     const [tab, setTab] = useState(0);
 
     // Current Stock
-    const [stock, setStock] = useState<StockReport[]>([]);
+    const [stock, setStock] = useState<StockItem[]>([]);
     const [stockLoading, setStockLoading] = useState(true);
 
     // Movements
-    const [movements, setMovements] = useState<MovementReport[]>([]);
-    const [movementsLoading, setMovementsLoading] = useState(true);
-
-    // Valuation
-    const [valuation, setValuation] = useState<ValuationReport[]>([]);
-    const [valuationLoading, setValuationLoading] = useState(true);
+    const [selectedMaterialId, setSelectedMaterialId] = useState<string>("");
+    const [movements, setMovements] = useState<MovementItem[]>([]);
+    const [movementsLoading, setMovementsLoading] = useState(false);
 
     useEffect(() => {
         setStockLoading(true);
-        fetcher("/api/stock/current")
-            .then(setStock)
+        fetcher("http://localhost:3001/api/stock/current")
+            .then((data) => {
+                setStock(data);
+                if (data.length > 0) setSelectedMaterialId(data[0].id);
+            })
             .finally(() => setStockLoading(false));
     }, []);
 
     useEffect(() => {
+        if (!selectedMaterialId) return;
         setMovementsLoading(true);
-        fetcher("/api/stock/movements")
+        fetcher(`http://localhost:3001/api/stock/movements/${selectedMaterialId}`)
             .then(setMovements)
             .finally(() => setMovementsLoading(false));
-    }, []);
-
-    useEffect(() => {
-        setValuationLoading(true);
-        fetcher("/api/stock/valuation")
-            .then(setValuation)
-            .finally(() => setValuationLoading(false));
-    }, []);
+    }, [selectedMaterialId]);
 
     return (
         <div style={{
@@ -129,7 +79,7 @@ const Reports: React.FC = () => {
             <div style={{ borderBottom: "1px solid #eee", marginBottom: 16 }}>
                 <h2 style={{ margin: 0 }}>Stock Reports</h2>
                 <div style={{ color: "#888", fontSize: 15, marginBottom: 8 }}>
-                    Current stock, movement, and valuation reports
+                    Current stock and movement reports
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                     {tabLabels.map((label, i) => (
@@ -166,22 +116,28 @@ const Reports: React.FC = () => {
                                         <tr style={{ background: "#f8f8f8" }}>
                                             <th style={{ padding: 8, border: "1px solid #eee" }}>Material</th>
                                             <th style={{ padding: 8, border: "1px solid #eee" }}>Category</th>
-                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Current Stock</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Total Received</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Total Issued</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Available Stock</th>
                                             <th style={{ padding: 8, border: "1px solid #eee" }}>Unit</th>
                                             <th style={{ padding: 8, border: "1px solid #eee" }}>Min Stock Level</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Stock Value</th>
                                             <th style={{ padding: 8, border: "1px solid #eee" }}>Status</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {stock.map((row) => (
-                                            <tr key={row.material.id}>
-                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{row.material.name}</td>
-                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{row.material.category}</td>
-                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{row.currentStock}</td>
+                                            <tr key={row.id}>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{row.name}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{row.category}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{row.totalReceived}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{row.totalIssued}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{row.availableStock}</td>
                                                 <td style={{ padding: 8, border: "1px solid #eee" }}>{row.unit}</td>
                                                 <td style={{ padding: 8, border: "1px solid #eee" }}>{row.minStockLevel}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>₹{row.stockValue.toLocaleString()}</td>
                                                 <td style={{ padding: 8, border: "1px solid #eee" }}>
-                                                    {row.currentStock <= row.minStockLevel ? (
+                                                    {row.isLowStock ? (
                                                         <span style={{ color: "red", fontWeight: 600 }}>Low</span>
                                                     ) : (
                                                         <span style={{ color: "green", fontWeight: 600 }}>OK</span>
@@ -198,49 +154,19 @@ const Reports: React.FC = () => {
                 {tab === 1 && (
                     <>
                         <h3 style={{ marginTop: 0 }}>Stock Movement Report</h3>
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ marginRight: 8, fontWeight: 500 }}>Material:</label>
+                            <select
+                                value={selectedMaterialId}
+                                onChange={e => setSelectedMaterialId(e.target.value)}
+                                style={{ padding: "6px 12px", borderRadius: 4, border: "1px solid #ccc" }}
+                            >
+                                {stock.map((m) => (
+                                    <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                            </select>
+                        </div>
                         {movementsLoading ? (
-                            <div style={{ padding: 32, textAlign: "center" }}>
-                                <span>Loading...</span>
-                            </div>
-                        ) : (
-                            movements.map((m) => (
-                                <div key={m.material.id} style={{ marginBottom: 24 }}>
-                                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                                        {m.material.name} ({m.material.unit})
-                                    </div>
-                                    <div style={{ overflowX: "auto" }}>
-                                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                                            <thead>
-                                                <tr style={{ background: "#f8f8f8" }}>
-                                                    <th style={{ padding: 8, border: "1px solid #eee" }}>Date</th>
-                                                    <th style={{ padding: 8, border: "1px solid #eee" }}>Type</th>
-                                                    <th style={{ padding: 8, border: "1px solid #eee" }}>Quantity</th>
-                                                    <th style={{ padding: 8, border: "1px solid #eee" }}>Rate</th>
-                                                    <th style={{ padding: 8, border: "1px solid #eee" }}>Reference</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {m.movements.map((mv, i) => (
-                                                    <tr key={i}>
-                                                        <td style={{ padding: 8, border: "1px solid #eee" }}>{new Date(mv.date).toLocaleDateString()}</td>
-                                                        <td style={{ padding: 8, border: "1px solid #eee" }}>{mv.type}</td>
-                                                        <td style={{ padding: 8, border: "1px solid #eee" }}>{mv.quantity}</td>
-                                                        <td style={{ padding: 8, border: "1px solid #eee" }}>₹{mv.rate.toFixed(2)}</td>
-                                                        <td style={{ padding: 8, border: "1px solid #eee" }}>{mv.refNumber}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </>
-                )}
-                {tab === 2 && (
-                    <>
-                        <h3 style={{ marginTop: 0 }}>Stock Valuation Report</h3>
-                        {valuationLoading ? (
                             <div style={{ padding: 32, textAlign: "center" }}>
                                 <span>Loading...</span>
                             </div>
@@ -249,19 +175,25 @@ const Reports: React.FC = () => {
                                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                                     <thead>
                                         <tr style={{ background: "#f8f8f8" }}>
-                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Material</th>
-                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Current Stock</th>
-                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Weighted Avg Rate</th>
-                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Stock Value</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Date</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Type</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Reference</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Quantity</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Rate</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Amount</th>
+                                            <th style={{ padding: 8, border: "1px solid #eee" }}>Balance</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {valuation.map((v) => (
-                                            <tr key={v.material.id}>
-                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{v.material.name}</td>
-                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{v.currentStock}</td>
-                                                <td style={{ padding: 8, border: "1px solid #eee" }}>₹{v.weightedRate.toFixed(2)}</td>
-                                                <td style={{ padding: 8, border: "1px solid #eee" }}>₹{v.stockValue.toFixed(2)}</td>
+                                        {movements.map((mv, i) => (
+                                            <tr key={i}>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{new Date(mv.date).toLocaleString()}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{mv.type}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{mv.reference}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{mv.quantity}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>₹{mv.rate.toFixed(2)}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>₹{mv.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                                                <td style={{ padding: 8, border: "1px solid #eee" }}>{mv.balance}</td>
                                             </tr>
                                         ))}
                                     </tbody>
