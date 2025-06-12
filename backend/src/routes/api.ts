@@ -24,14 +24,14 @@ router.get('/materials', async (_req: Request, res: Response) => {
 router.post('/materials', async (req, res) => {
   try {
     const { name, unit, category, minStockLevel } = req.body;
-    
     const material = await prisma.material.create({
-      data: { name, unit, category, minStockLevel }
+      data: { name, unit, category, "minStockLevel":parseInt(minStockLevel) }
     });
+
     
     res.status(201).json(material);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create material' });
+  } catch (error:any) {
+    res.status(500).json({ error: 'Failed to create material',mess:error.message });
   }
 });
 
@@ -68,7 +68,7 @@ router.put('/materials/:id', async (req, res) => {
     
     const material = await prisma.material.update({
       where: { id: req.params.id },
-      data: { name, unit, category, minStockLevel }
+      data: { name, unit, category, minStockLevel:parseInt(minStockLevel) }
     });
     
     res.json(material);
