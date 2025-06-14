@@ -357,10 +357,12 @@ router.get('/dashboard/summary', async (_req: Request, res: Response) => {
     
     const stockReport = await fifoService.getStockReport();
     const lowStockMaterials = stockReport.filter(item => item.isLowStock);
-    
+    const totalStockValue = stockReport.reduce((sum, item) => sum + (item.stockValue || 0), 0);
+
     res.json({
       totalMaterials,
       totalGRNs,
+      totalStockValue,
       totalIssues,
       lowStockCount: lowStockMaterials.length,
       recentGRNs,

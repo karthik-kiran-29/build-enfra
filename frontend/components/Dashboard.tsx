@@ -11,6 +11,7 @@ type DashboardApiResponse = {
   recentGRNs: any[]
   recentIssues: any[]
   lowStockMaterials: any[]
+  totalStockValue: number
 }
 
 export default function Dashboard() {
@@ -32,7 +33,7 @@ export default function Dashboard() {
   // Prepare summary
   const stockSummary = {
     totalMaterials: data.totalMaterials,
-    totalStockValue: data.lowStockMaterials.reduce((sum, m) => sum + (m.stockValue || 0), 0),
+    totalStockValue: data.totalStockValue,
     lowStockItems: data.lowStockCount,
   }
 
